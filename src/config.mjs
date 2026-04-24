@@ -44,14 +44,16 @@ function resolveMaybe(value, base = root) {
   return path.isAbsolute(value) ? value : path.resolve(base, value);
 }
 
-function applySnapshotTemplate(template, cameraId) {
+function applySnapshotTemplate(template, cameraId, imageName) {
   return template
     .replaceAll('{cameraId}', cameraId)
     .replaceAll('{CAMERA_ID}', cameraId)
-    .replaceAll('{id}', cameraId);
+    .replaceAll('{id}', cameraId)
+    .replaceAll('{IMAGE_NAME}', imageName)
+    .replaceAll('{imageName}', imageName);
 }
 
-function normalizeSnapshotUrls(raw, template, cameraIds = []) {
+function normalizeSnapshotUrls(raw, template, cameraIds = [], imageName = 'object-detection__animal') {
   const urls = raw
     ? (typeof raw === 'string' ? readJson(raw) : raw)
     : {};
@@ -59,7 +61,7 @@ function normalizeSnapshotUrls(raw, template, cameraIds = []) {
   if (!template) return urls;
 
   return {
-    ...Object.fromEntries(cameraIds.map(cameraId => [cameraId, applySnapshotTemplate(template, cameraId)])),
+    ...Object.fromEntries(cameraIds.map(cameraId => [cameraId, applySnapshotTemplate(template, cameraId, imageName)])),
     ...urls,
   };
 }
@@ -99,6 +101,10 @@ const mqtt = normalizeMqtt(fileConfig.mqtt ?? {
 const snapshotUrlTemplate = process.env.BEAKPEEK_SNAPSHOT_URL_TEMPLATE
   ?? fileConfig.snapshotUrlTemplate
   ?? fileConfig.SNAPSHOT_URL_TEMPLATE;
+const snapshotImageName = process.env.BEAKPEEK_SNAPSHOT_IMAGE_NAME
+  ?? fileConfig.snapshotImageName
+  ?? fileConfig.SNAPSHOT_IMAGE_NAME
+  ?? 'object-detection__animal';
 
 export const config = {
   root,
@@ -120,6 +126,7 @@ export const config = {
     process.env.BEAKPEEK_SNAPSHOT_URLS ?? fileConfig.snapshotUrls ?? fileConfig.SNAPSHOT_URLS,
     snapshotUrlTemplate,
     Object.values(mqtt.topics),
+    snapshotImageName,
   ),
   mqtt,
 };

@@ -57,11 +57,12 @@ For Scrypted snapshot URLs that only differ by camera ID, use a local `config.js
 
 ```json
 {
+  "snapshotImageName": "object-detection__animal",
   "snapshotUrlTemplate": "https://your-scrypted-host/endpoint/snapshot/{cameraId}/{IMAGE_NAME}?secret=...&user_token=..."
 }
 ```
 
-The `{cameraId}` token is expanded from the MQTT topic map. Keep this in `config.json` or `.env`; both are ignored so snapshot secrets do not get committed.
+The `{cameraId}` token is expanded from the MQTT topic map, and `{IMAGE_NAME}` defaults to `object-detection__animal`. Keep this in `config.json` or `.env`; both are ignored so snapshot secrets do not get committed.
 
 To import old observations from another checkout:
 

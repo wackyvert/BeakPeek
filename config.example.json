@@ -10,6 +10,7 @@
   "birdNamesDb": "./assets/birdnames.db",
   "detectionDelayMs": 14000,
   "dedupeWindowMs": 30000,
+  "snapshotImageName": "object-detection__animal",
   "snapshotUrlTemplate": "https://scrypted.example/endpoint/snapshot/{cameraId}/{IMAGE_NAME}?secret=REDACTED&user_token=REDACTED",
   "snapshotUrls": {
     "117": "https://example.invalid/camera-117.jpg"
