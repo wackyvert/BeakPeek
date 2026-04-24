@@ -18,9 +18,7 @@
   "mqtt": {
     "broker": "mqtt://192.168.68.104:1883",
     "topics": {
-      "birdfeeder/ObjectDetector": "117",
       "birdfeeder2/ObjectDetector": "133",
-      "birdfeeder3/ObjectDetector": "132",
       "birdfeeder4/ObjectDetector": "140"
     }
   }
