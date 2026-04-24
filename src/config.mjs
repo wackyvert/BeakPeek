@@ -5,6 +5,28 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(here, '..');
 
+function loadDotEnv(file = path.join(root, '.env')) {
+  if (!fs.existsSync(file)) return;
+  const lines = fs.readFileSync(file, 'utf8').split(/\r?\n/);
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) continue;
+    const equals = trimmed.indexOf('=');
+    if (equals === -1) continue;
+
+    const key = trimmed.slice(0, equals).trim();
+    let value = trimmed.slice(equals + 1).trim();
+    if (!key || process.env[key] != null) continue;
+    if (
+      (value.startsWith('"') && value.endsWith('"')) ||
+      (value.startsWith("'") && value.endsWith("'"))
+    ) {
+      value = value.slice(1, -1);
+    }
+    process.env[key] = value;
+  }
+}
+
 function readJson(file) {
   if (!file || !fs.existsSync(file)) return {};
   return JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -37,6 +59,8 @@ function normalizeMqtt(raw = {}) {
     topics,
   };
 }
+
+loadDotEnv();
 
 const configPath = process.env.BEAKPEEK_CONFIG
   ? resolveMaybe(process.env.BEAKPEEK_CONFIG, process.cwd())

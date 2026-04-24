@@ -5,11 +5,11 @@
   "description": "Modern feeder intelligence service for HADash.",
   "type": "module",
   "engines": {
-    "node": ">=25.0.0"
+    "node": ">=22.5.0"
   },
   "scripts": {
-    "start": "node --env-file-if-exists=.env src/main.mjs",
-    "dev": "node --watch --env-file-if-exists=.env src/main.mjs",
+    "start": "node src/main.mjs",
+    "dev": "node --watch src/main.mjs",
     "check": "node --check src/main.mjs && node --check src/server.mjs && node --check src/service.mjs",
     "test": "node --test"
   },
