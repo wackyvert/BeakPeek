@@ -1,3 +1,13 @@
+function hasAnimalDetection(message) {
+  try {
+    const payload = JSON.parse(message.toString());
+    if (!Array.isArray(payload.detections)) return false;
+    return payload.detections.some(detection => detection?.className === 'animal');
+  } catch {
+    return false;
+  }
+}
+
 export async function startMqttBridge({ config, service }) {
   if (!config.mqtt.broker) {
     return { enabled: false, reason: 'No MQTT broker configured' };
@@ -23,8 +33,7 @@ export async function startMqttBridge({ config, service }) {
   });
 
   client.on('message', (topic, message) => {
-    const payload = message.toString().toLowerCase();
-    if (!payload.includes('animal') && !payload.includes('bird') && !payload.includes('motion')) return;
+    if (!hasAnimalDetection(message)) return;
 
     const cameraId = topicCameraIds.get(topic);
     if (!cameraId) {
