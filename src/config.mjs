@@ -44,10 +44,24 @@ function resolveMaybe(value, base = root) {
   return path.isAbsolute(value) ? value : path.resolve(base, value);
 }
 
-function normalizeSnapshotUrls(raw) {
-  if (!raw) return {};
-  if (typeof raw === 'string') return readJson(raw);
-  return raw;
+function applySnapshotTemplate(template, cameraId) {
+  return template
+    .replaceAll('{cameraId}', cameraId)
+    .replaceAll('{CAMERA_ID}', cameraId)
+    .replaceAll('{id}', cameraId);
+}
+
+function normalizeSnapshotUrls(raw, template, cameraIds = []) {
+  const urls = raw
+    ? (typeof raw === 'string' ? readJson(raw) : raw)
+    : {};
+
+  if (!template) return urls;
+
+  return {
+    ...Object.fromEntries(cameraIds.map(cameraId => [cameraId, applySnapshotTemplate(template, cameraId)])),
+    ...urls,
+  };
 }
 
 function normalizeMqtt(raw = {}) {
@@ -73,6 +87,18 @@ const legacyRoot = resolveMaybe(
 );
 const dataDir = resolveMaybe(process.env.BEAKPEEK_DATA_DIR ?? fileConfig.dataDir ?? './data', root);
 const assetsDir = resolveMaybe(process.env.BEAKPEEK_ASSETS_DIR ?? fileConfig.assetsDir ?? './assets', root);
+const mqtt = normalizeMqtt(fileConfig.mqtt ?? {
+  broker: fileConfig.MQTT_BROKER,
+  topics: Object.fromEntries([
+    [fileConfig.MQTT_TOPIC, '117'],
+    [fileConfig.MQTT_TOPIC2, '133'],
+    [fileConfig.MQTT_TOPIC3, '132'],
+    [fileConfig.MQTT_TOPIC4, '140'],
+  ].filter(([topic]) => topic)),
+});
+const snapshotUrlTemplate = process.env.BEAKPEEK_SNAPSHOT_URL_TEMPLATE
+  ?? fileConfig.snapshotUrlTemplate
+  ?? fileConfig.SNAPSHOT_URL_TEMPLATE;
 
 export const config = {
   root,
@@ -92,16 +118,10 @@ export const config = {
   dedupeWindowMs: numberFromEnv('BEAKPEEK_DEDUPE_WINDOW_MS', fileConfig.dedupeWindowMs ?? 30000),
   snapshotUrls: normalizeSnapshotUrls(
     process.env.BEAKPEEK_SNAPSHOT_URLS ?? fileConfig.snapshotUrls ?? fileConfig.SNAPSHOT_URLS,
+    snapshotUrlTemplate,
+    Object.values(mqtt.topics),
   ),
-  mqtt: normalizeMqtt(fileConfig.mqtt ?? {
-    broker: fileConfig.MQTT_BROKER,
-    topics: Object.fromEntries([
-      [fileConfig.MQTT_TOPIC, '117'],
-      [fileConfig.MQTT_TOPIC2, '133'],
-      [fileConfig.MQTT_TOPIC3, '132'],
-      [fileConfig.MQTT_TOPIC4, '140'],
-    ].filter(([topic]) => topic)),
-  }),
+  mqtt,
 };
 
 export function ensureRuntimeDirs() {
