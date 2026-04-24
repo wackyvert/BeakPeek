@@ -44,11 +44,11 @@ const configPath = process.env.BEAKPEEK_CONFIG
 
 const fileConfig = readJson(configPath);
 const legacyRoot = resolveMaybe(
-  process.env.BEAKPEEK_LEGACY_ROOT ?? fileConfig.legacyRoot ?? '/Users/jake/Downloads/AuvikDashboard',
+  process.env.BEAKPEEK_LEGACY_ROOT ?? fileConfig.legacyRoot ?? root,
   process.cwd(),
 );
 const dataDir = resolveMaybe(process.env.BEAKPEEK_DATA_DIR ?? fileConfig.dataDir ?? './data', root);
-const assetsDir = resolveMaybe(process.env.BEAKPEEK_ASSETS_DIR ?? fileConfig.assetsDir ?? legacyRoot, root);
+const assetsDir = resolveMaybe(process.env.BEAKPEEK_ASSETS_DIR ?? fileConfig.assetsDir ?? './assets', root);
 
 export const config = {
   root,

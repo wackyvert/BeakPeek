@@ -1,14 +1,13 @@
 {
   "host": "0.0.0.0",
   "port": 8787,
-  "legacyRoot": "/Users/jake/Downloads/AuvikDashboard",
   "dataDir": "./data",
-  "assetsDir": "/Users/jake/Downloads/AuvikDashboard",
+  "assetsDir": "./assets",
   "python": "python3",
   "classifierScript": "./scripts/classify.py",
-  "modelPath": "/Users/jake/Downloads/AuvikDashboard/model.tflite",
-  "labelsPath": "/Users/jake/Downloads/AuvikDashboard/labels.json",
-  "birdNamesDb": "/Users/jake/Downloads/AuvikDashboard/birdnames.db",
+  "modelPath": "./assets/model.tflite",
+  "labelsPath": "./assets/labels.json",
+  "birdNamesDb": "./assets/birdnames.db",
   "detectionDelayMs": 14000,
   "dedupeWindowMs": 30000,
   "snapshotUrls": {

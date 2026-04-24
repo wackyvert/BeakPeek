@@ -13,6 +13,20 @@ npm start
 
 The default API is `http://localhost:8787`.
 
+## Portable Assets
+
+The service no longer assumes any machine-specific path. Put the classifier assets beside the clone:
+
+```txt
+BeakPeekService/
+└── assets/
+    ├── model.tflite
+    ├── labels.json
+    └── birdnames.db
+```
+
+These assets are committed to the repo so a fresh clone can run from its own folder. If you want to test a different model or taxonomy later, point `config.json` or env vars at the replacement files.
+
 ## Key Endpoints
 
 - `GET /api/v1/summary` - small payload for the tvOS dashboard.
@@ -24,7 +38,7 @@ The default API is `http://localhost:8787`.
 
 ## Config
 
-The service reads `config.json` or a file pointed to by `BEAKPEEK_CONFIG`. The example config points at the old BeakPeek assets in `/Users/jake/Downloads/AuvikDashboard`, so the first pass does not need to move the TFLite model, labels, or common-name database.
+The service reads `config.json` or a file pointed to by `BEAKPEEK_CONFIG`. Relative paths are resolved from the service root, so a cloned repo works the same way on any machine.
 
 Useful env overrides:
 
@@ -32,7 +46,17 @@ Useful env overrides:
 BEAKPEEK_PORT=8787
 BEAKPEEK_CONFIG=/path/to/config.json
 BEAKPEEK_DATA_DIR=/path/to/data
+BEAKPEEK_ASSETS_DIR=/path/to/assets
+BEAKPEEK_MODEL=/path/to/model.tflite
+BEAKPEEK_LABELS=/path/to/labels.json
+BEAKPEEK_BIRD_NAMES_DB=/path/to/birdnames.db
 BEAKPEEK_MQTT_BROKER=mqtt://192.168.68.104:1883
+```
+
+To import old observations from another checkout:
+
+```sh
+node scripts/import-legacy.mjs /path/to/old/events.db 250
 ```
 
 ## HADash Integration
