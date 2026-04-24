@@ -182,7 +182,10 @@ export class BeakPeekService {
         }
         throw error;
       }
-      return await this.classifyImageBuffer(cameraId, bytes, { source: options.source ?? 'snapshot' });
+      return await this.classifyImageBuffer(cameraId, bytes, {
+        source: options.source ?? 'snapshot',
+        cropBox: options.cropBox,
+      });
     } finally {
       this.inFlight.delete(cameraId);
     }
@@ -205,7 +208,7 @@ export class BeakPeekService {
     let result;
     let processedBytes = bytes;
     try {
-      processedBytes = await this.cropImageBuffer(cameraId, tmpPath, bytes);
+      processedBytes = await this.cropImageBuffer(cameraId, tmpPath, bytes, options.cropBox);
       if (processedBytes !== bytes) {
         fs.writeFileSync(tmpPath, processedBytes);
       }
@@ -268,20 +271,25 @@ export class BeakPeekService {
     );
   }
 
-  async cropImageBuffer(cameraId, imagePath, fallbackBytes) {
+  async cropImageBuffer(cameraId, imagePath, fallbackBytes, cropBox) {
     if (!this.config.cropImages) return fallbackBytes;
 
     const croppedPath = path.join(this.config.tmpDir, `${cameraId}-${Date.now()}-crop.jpg`);
     try {
+      const args = [
+        this.config.cropScript,
+        imagePath,
+        croppedPath,
+        '--aspect',
+        this.config.cropAspect,
+      ];
+      if (Array.isArray(cropBox)) {
+        args.push('--box', cropBox.join(','));
+      }
+
       await jsonFromProcess(
         this.config.python,
-        [
-          this.config.cropScript,
-          imagePath,
-          croppedPath,
-          '--aspect',
-          this.config.cropAspect,
-        ],
+        args,
         { cwd: this.config.root },
       );
       return fs.readFileSync(croppedPath);

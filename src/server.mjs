@@ -111,6 +111,14 @@ function parseMultipartForm(buffer, contentType) {
   return { fields, files };
 }
 
+function parseCropBox(value) {
+  if (!value) return undefined;
+  const parsed = String(value)
+    .split(',')
+    .map(item => Number(item.trim()));
+  return parsed.length === 4 && parsed.every(Number.isFinite) ? parsed : undefined;
+}
+
 async function parseImageUpload(req, url) {
   const contentType = req.headers['content-type'] ?? '';
   if (contentType.startsWith('multipart/form-data')) {
@@ -120,6 +128,7 @@ async function parseImageUpload(req, url) {
     return {
       cameraId: form.fields.cameraId ?? form.fields.camera_id ?? url.searchParams.get('cameraId'),
       cameraName: form.fields.cameraName ?? form.fields.camera_name,
+      cropBox: parseCropBox(form.fields.box ?? form.fields.cropBox ?? url.searchParams.get('box')),
       bytes: file.data,
       filename: file.filename,
     };
@@ -129,6 +138,7 @@ async function parseImageUpload(req, url) {
     return {
       cameraId: req.headers['x-camera-id'] ?? url.searchParams.get('cameraId'),
       cameraName: req.headers['x-camera-name'] ?? undefined,
+      cropBox: parseCropBox(req.headers['x-crop-box'] ?? url.searchParams.get('box')),
       bytes: await readRequestBuffer(req),
       filename: 'upload',
     };
@@ -288,6 +298,7 @@ export function createServer({ config, service, broadcaster }) {
         const result = await service.classifyImageBuffer(upload.cameraId, upload.bytes, {
           cameraName: upload.cameraName,
           source: 'upload',
+          cropBox: upload.cropBox,
         });
 
         if (result.skipped) {

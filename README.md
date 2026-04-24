@@ -57,6 +57,15 @@ curl -X POST http://localhost:8787/api/v1/test/classify-image \
   -F image=@/path/to/photo.jpg
 ```
 
+To test a specific Scrypted-style crop box:
+
+```sh
+curl -X POST http://localhost:8787/api/v1/test/classify-image \
+  -F cameraId=140 \
+  -F box=1039,1351,592,592 \
+  -F image=@/path/to/photo.jpg
+```
+
 ## Config
 
 The service reads `config.json` or a file pointed to by `BEAKPEEK_CONFIG`. Relative paths are resolved from the service root, so a cloned repo works the same way on any machine.

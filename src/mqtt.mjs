@@ -8,6 +8,30 @@ export function hasAnimalDetection(message) {
   }
 }
 
+export function animalCropBox(message) {
+  try {
+    const payload = JSON.parse(message.toString());
+    if (!Array.isArray(payload.detections)) return null;
+
+    const detections = payload.detections
+      .filter(detection => detection?.className === 'animal' && Array.isArray(detection.boundingBox))
+      .map(detection => ({
+        box: detection.boundingBox.slice(0, 4).map(Number),
+        score: Number(detection.score ?? 0),
+      }))
+      .filter(detection => detection.box.every(Number.isFinite));
+
+    detections.sort((a, b) => {
+      const scoreDelta = b.score - a.score;
+      if (scoreDelta !== 0) return scoreDelta;
+      return (b.box[2] * b.box[3]) - (a.box[2] * a.box[3]);
+    });
+    return detections[0]?.box ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function topicCameraMap(config) {
   return new Map(
     Object.entries(config.mqtt.topics)
@@ -21,7 +45,7 @@ export async function handleDetectionMessage({ config, service, topic, message, 
   const cameraId = topicCameraMap(config).get(topic);
   if (!cameraId) return { skipped: true, reason: 'unmapped_topic', topic };
 
-  return await service.classifyCamera(cameraId, { source, delay });
+  return await service.classifyCamera(cameraId, { source, delay, cropBox: animalCropBox(message) });
 }
 
 export async function startMqttBridge({ config, service }) {
