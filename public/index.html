@@ -93,6 +93,27 @@
     .hero { min-height: 620px; position: relative; background: #050505; }
     .hero img { width: 100%; height: 100%; object-fit: cover; display: block; }
     .hero .empty { display: grid; place-items: center; height: 100%; color: var(--muted); }
+    .hero-nav {
+      position: absolute;
+      right: 18px;
+      bottom: 18px;
+      display: flex;
+      gap: 8px;
+      z-index: 2;
+    }
+    .hero-nav button {
+      width: 38px;
+      height: 38px;
+      display: grid;
+      place-items: center;
+      padding: 0;
+      border-radius: 999px;
+      background: rgba(0,0,0,.48);
+      border-color: rgba(255,255,255,.18);
+      backdrop-filter: blur(16px);
+      font-size: 22px;
+      line-height: 1;
+    }
     .overlay {
       position: absolute;
       inset: auto 0 0;
@@ -168,8 +189,17 @@
       padding: 9px;
       border-radius: 8px;
       border: 1px solid transparent;
+      width: 100%;
+      color: inherit;
+      text-align: left;
+      background: transparent;
     }
     .event:hover { background: rgba(255,255,255,.05); border-color: var(--line); }
+    .event.selected {
+      background: rgba(120,209,140,.1);
+      border-color: rgba(120,209,140,.36);
+    }
+    button.event { appearance: none; font: inherit; cursor: pointer; }
     .thumb { width: 82px; height: 62px; border-radius: 6px; object-fit: cover; background: #050505; }
     .event b, .event span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .event span { color: var(--muted); font-size: 13px; }
@@ -246,7 +276,7 @@
   </main>
 
   <script>
-    const state = { events: [], summary: null, species: [] };
+    const state = { events: [], summary: null, species: [], selectedEventId: null };
     const $ = id => document.getElementById(id);
     const escapeHTML = value => String(value ?? '')
       .replaceAll('&', '&amp;')
@@ -263,8 +293,33 @@
       return hours < 24 ? `${hours}h ago` : `${Math.floor(hours / 24)}d ago`;
     };
 
+    function selectedEvent() {
+      if (state.selectedEventId) {
+        return state.events.find(event => event.id === state.selectedEventId) ?? state.summary?.latest;
+      }
+      return state.summary?.latest;
+    }
+
+    function renderHero(event) {
+      $('hero').innerHTML = event ? `
+        <img src="${event.imageUrl}" alt="">
+        <div class="hero-top">
+          <div class="tag"><span class="dot"></span>${state.selectedEventId ? 'Selected sighting' : 'Latest visitor'}</div>
+          <div class="tag">${escapeHTML(event.cameraName)}</div>
+        </div>
+        <div class="overlay">
+          <p class="species">${escapeHTML(event.commonName ?? event.scientificName ?? 'Visitor')}</p>
+          <div class="meta">${escapeHTML(event.scientificName ?? event.cameraName)} · ${relative(event.timestamp)}</div>
+        </div>
+        <div class="hero-nav">
+          <button type="button" data-step="1" aria-label="Previous sighting">‹</button>
+          <button type="button" data-step="-1" aria-label="Next sighting">›</button>
+        </div>
+      ` : '<div class="empty">Waiting for the first feeder visit</div>';
+    }
+
     function render() {
-      const latest = state.summary?.latest;
+      const preview = selectedEvent();
       const speciesCount = Math.max(state.summary?.todaySpecies ?? 0, state.species.length);
       const cameras = state.summary?.cameras ?? [];
       const cameraCounts = new Map(cameras.map(camera => [camera, 0]));
@@ -280,17 +335,7 @@
       $('eventMeta').textContent = `${state.events.length} loaded`;
       $('speciesMeta').textContent = `${speciesCount} names`;
 
-      $('hero').innerHTML = latest ? `
-        <img src="${latest.imageUrl}" alt="">
-        <div class="hero-top">
-          <div class="tag"><span class="dot"></span>Latest visitor</div>
-          <div class="tag">${escapeHTML(latest.cameraName)}</div>
-        </div>
-        <div class="overlay">
-          <p class="species">${escapeHTML(latest.commonName ?? latest.scientificName ?? 'Visitor')}</p>
-          <div class="meta">${escapeHTML(latest.scientificName ?? latest.cameraName)} · ${relative(latest.timestamp)}</div>
-        </div>
-      ` : '<div class="empty">Waiting for the first feeder visit</div>';
+      renderHero(preview);
 
       $('cameraStrip').innerHTML = [...cameraCounts.entries()].map(([camera, count]) => `
         <div class="camera">
@@ -300,13 +345,13 @@
       `).join('') || '<div class="camera"><b>Offline</b><span>No configured feeds</span></div>';
 
       $('events').innerHTML = state.events.map(event => `
-        <div class="event">
+        <button type="button" class="event ${event.id === preview?.id ? 'selected' : ''}" data-event-id="${escapeHTML(event.id)}">
           <img class="thumb" src="${event.imageUrl}" alt="">
           <div>
             <b>${escapeHTML(event.commonName ?? event.scientificName ?? 'Visitor')}</b>
             <span>${escapeHTML(event.cameraName)} · ${relative(event.timestamp)}</span>
           </div>
-        </div>
+        </button>
       `).join('') || '<div class="event"><span>No events yet</span></div>';
 
       $('speciesList').innerHTML = state.species.slice(0, 12).map(species => `
@@ -324,11 +369,35 @@
       state.summary = summary;
       state.events = events;
       state.species = species;
+      if (state.selectedEventId && !state.events.some(event => event.id === state.selectedEventId)) {
+        state.selectedEventId = null;
+      }
       $('streamStatus').textContent = 'Live';
       render();
     }
 
+    function selectEvent(id) {
+      state.selectedEventId = id;
+      render();
+    }
+
+    function stepPreview(delta) {
+      if (!state.events.length) return;
+      const current = selectedEvent();
+      const index = Math.max(0, state.events.findIndex(event => event.id === current?.id));
+      const next = (index + delta + state.events.length) % state.events.length;
+      selectEvent(state.events[next].id);
+    }
+
     $('refresh').addEventListener('click', load);
+    $('events').addEventListener('click', event => {
+      const item = event.target.closest('[data-event-id]');
+      if (item) selectEvent(item.dataset.eventId);
+    });
+    $('hero').addEventListener('click', event => {
+      const control = event.target.closest('[data-step]');
+      if (control) stepPreview(Number(control.dataset.step));
+    });
     const stream = new EventSource('/api/v1/stream');
     stream.addEventListener('event', load);
     stream.addEventListener('open', () => { $('streamStatus').textContent = 'Live'; });
