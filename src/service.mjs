@@ -23,6 +23,26 @@ function hashBuffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
 }
 
+function sanitizeSnapshotUrl(url) {
+  try {
+    const parsed = new URL(url);
+    for (const key of parsed.searchParams.keys()) {
+      parsed.searchParams.set(key, 'REDACTED');
+    }
+    return parsed.toString();
+  } catch {
+    return 'snapshot URL';
+  }
+}
+
+function sanitizeLogText(text) {
+  return text.replace(/([?&](?:secret|user_token|token)=)[^&\s]+/gi, '$1REDACTED');
+}
+
+function isRetryableSnapshotStatus(status) {
+  return [400, 404, 408, 425, 429, 500, 502, 503, 504].includes(status);
+}
+
 function fetchSnapshot(url, { allowInsecureTLS = false, redirects = 0 } = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -48,8 +68,18 @@ function fetchSnapshot(url, { allowInsecureTLS = false, redirects = 0 } = {}) {
         }
 
         if (status < 200 || status >= 300) {
-          res.resume();
-          reject(new Error(`Snapshot fetch failed with HTTP ${status}`));
+          const chunks = [];
+          res.on('data', chunk => {
+            if (Buffer.concat(chunks).byteLength < 512) chunks.push(chunk);
+          });
+          res.on('end', () => {
+            const body = sanitizeLogText(Buffer.concat(chunks).toString('utf8').replace(/\s+/g, ' ').trim());
+            const detail = body ? `: ${body.slice(0, 240)}` : '';
+            reject(Object.assign(
+              new Error(`Snapshot fetch failed with HTTP ${status} for ${sanitizeSnapshotUrl(url)}${detail}`),
+              { status },
+            ));
+          });
           return;
         }
 
@@ -64,6 +94,21 @@ function fetchSnapshot(url, { allowInsecureTLS = false, redirects = 0 } = {}) {
       reject(new Error(`Snapshot fetch failed: ${error.message}`));
     });
   });
+}
+
+async function fetchSnapshotWithRetries(url, { allowInsecureTLS, attempts = 1, retryDelayMs = 1000 } = {}) {
+  let lastError;
+  const totalAttempts = Math.max(1, attempts);
+  for (let attempt = 1; attempt <= totalAttempts; attempt += 1) {
+    try {
+      return await fetchSnapshot(url, { allowInsecureTLS });
+    } catch (error) {
+      lastError = error;
+      if (attempt === totalAttempts || !isRetryableSnapshotStatus(error.status)) break;
+      await sleep(retryDelayMs);
+    }
+  }
+  throw lastError;
 }
 
 function jsonFromProcess(command, args, options) {
@@ -118,8 +163,10 @@ export class BeakPeekService {
       const snapshotUrl = this.config.snapshotUrls[cameraId];
       if (!snapshotUrl) throw new Error(`No snapshot URL configured for camera ${cameraId}`);
 
-      const bytes = await fetchSnapshot(snapshotUrl, {
+      const bytes = await fetchSnapshotWithRetries(snapshotUrl, {
         allowInsecureTLS: this.config.snapshotAllowInsecureTLS,
+        attempts: this.config.snapshotFetchAttempts,
+        retryDelayMs: this.config.snapshotRetryDelayMs,
       });
       return await this.classifyImageBuffer(cameraId, bytes, { source: options.source ?? 'snapshot' });
     } finally {

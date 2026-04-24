@@ -8,10 +8,13 @@ Standalone feeder intelligence for HADash. This replaces the old all-in-one `fee
 cd BeakPeekService
 cp config.example.json config.json
 npm install
+npm run setup:python
 npm start
 ```
 
 The default API is `http://localhost:8787`.
+
+`npm run setup:python` installs the classifier dependencies into a repo-local venv. The service automatically uses `venv/bin/python` first, then `.venv/bin/python`, then falls back to `python3` unless `BEAKPEEK_PYTHON` is set.
 
 ## Portable Assets
 
@@ -51,6 +54,8 @@ BEAKPEEK_MODEL=/path/to/model.tflite
 BEAKPEEK_LABELS=/path/to/labels.json
 BEAKPEEK_BIRD_NAMES_DB=/path/to/birdnames.db
 BEAKPEEK_SNAPSHOT_ALLOW_INSECURE_TLS=true
+BEAKPEEK_SNAPSHOT_FETCH_ATTEMPTS=3
+BEAKPEEK_SNAPSHOT_RETRY_DELAY_MS=1500
 BEAKPEEK_MQTT_BROKER=mqtt://192.168.68.104:1883
 ```
 
@@ -60,6 +65,8 @@ For Scrypted snapshot URLs that only differ by camera ID, use a local `config.js
 {
   "snapshotImageName": "object-detection__animal",
   "snapshotAllowInsecureTLS": true,
+  "snapshotFetchAttempts": 3,
+  "snapshotRetryDelayMs": 1500,
   "snapshotUrlTemplate": "https://your-scrypted-host/endpoint/snapshot/{cameraId}/{IMAGE_NAME}?secret=...&user_token=..."
 }
 ```

@@ -11,6 +11,8 @@
   "detectionDelayMs": 14000,
   "dedupeWindowMs": 30000,
   "snapshotAllowInsecureTLS": true,
+  "snapshotFetchAttempts": 3,
+  "snapshotRetryDelayMs": 1500,
   "snapshotImageName": "object-detection__animal",
   "snapshotUrlTemplate": "https://scrypted.example/endpoint/snapshot/{cameraId}/{IMAGE_NAME}?secret=REDACTED&user_token=REDACTED",
   "mqtt": {

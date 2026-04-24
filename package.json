@@ -10,6 +10,7 @@
   "scripts": {
     "start": "node src/main.mjs",
     "dev": "node --watch src/main.mjs",
+    "setup:python": "sh scripts/setup-python.sh",
     "check": "node --check src/main.mjs && node --check src/server.mjs && node --check src/service.mjs",
     "test": "node --test"
   },

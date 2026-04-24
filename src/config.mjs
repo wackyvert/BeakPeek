@@ -95,6 +95,10 @@ const legacyRoot = resolveMaybe(
 );
 const dataDir = resolveMaybe(process.env.BEAKPEEK_DATA_DIR ?? fileConfig.dataDir ?? './data', root);
 const assetsDir = resolveMaybe(process.env.BEAKPEEK_ASSETS_DIR ?? fileConfig.assetsDir ?? './assets', root);
+const localPython = [
+  path.join(root, 'venv', 'bin', 'python'),
+  path.join(root, '.venv', 'bin', 'python'),
+].find(candidate => fs.existsSync(candidate));
 const mqtt = normalizeMqtt(fileConfig.mqtt ?? {
   broker: fileConfig.MQTT_BROKER,
   topics: Object.fromEntries([
@@ -121,7 +125,7 @@ export const config = {
   imageDir: path.join(dataDir, 'images'),
   tmpDir: path.join(dataDir, 'tmp'),
   dbPath: resolveMaybe(process.env.BEAKPEEK_DB ?? fileConfig.dbPath ?? './data/beakpeek.db', root),
-  python: process.env.BEAKPEEK_PYTHON ?? fileConfig.python ?? 'python3',
+  python: process.env.BEAKPEEK_PYTHON ?? localPython ?? fileConfig.python ?? 'python3',
   classifierScript: resolveMaybe(fileConfig.classifierScript ?? './scripts/classify.py', root),
   modelPath: resolveMaybe(process.env.BEAKPEEK_MODEL ?? fileConfig.modelPath ?? path.join(assetsDir, 'model.tflite'), root),
   labelsPath: resolveMaybe(process.env.BEAKPEEK_LABELS ?? fileConfig.labelsPath ?? path.join(assetsDir, 'labels.json'), root),
@@ -132,6 +136,8 @@ export const config = {
     'BEAKPEEK_SNAPSHOT_ALLOW_INSECURE_TLS',
     fileConfig.snapshotAllowInsecureTLS ?? true,
   ),
+  snapshotFetchAttempts: numberFromEnv('BEAKPEEK_SNAPSHOT_FETCH_ATTEMPTS', fileConfig.snapshotFetchAttempts ?? 3),
+  snapshotRetryDelayMs: numberFromEnv('BEAKPEEK_SNAPSHOT_RETRY_DELAY_MS', fileConfig.snapshotRetryDelayMs ?? 1500),
   snapshotUrls: normalizeSnapshotUrls(
     process.env.BEAKPEEK_SNAPSHOT_URLS ?? fileConfig.snapshotUrls ?? fileConfig.SNAPSHOT_URLS,
     snapshotUrlTemplate,
