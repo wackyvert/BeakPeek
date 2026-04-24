@@ -43,6 +43,12 @@ function isRetryableSnapshotStatus(status) {
   return [400, 404, 408, 425, 429, 500, 502, 503, 504].includes(status);
 }
 
+function isMissingDetectionSnapshot(error) {
+  return [400, 404].includes(error.status)
+    && error.body?.includes('ENOENT')
+    && error.body?.includes('/detections/');
+}
+
 function fetchSnapshot(url, { allowInsecureTLS = false, redirects = 0 } = {}) {
   return new Promise((resolve, reject) => {
     const parsed = new URL(url);
@@ -77,7 +83,7 @@ function fetchSnapshot(url, { allowInsecureTLS = false, redirects = 0 } = {}) {
             const detail = body ? `: ${body.slice(0, 240)}` : '';
             reject(Object.assign(
               new Error(`Snapshot fetch failed with HTTP ${status} for ${sanitizeSnapshotUrl(url)}${detail}`),
-              { status },
+              { status, body },
             ));
           });
           return;
@@ -163,11 +169,19 @@ export class BeakPeekService {
       const snapshotUrl = this.config.snapshotUrls[cameraId];
       if (!snapshotUrl) throw new Error(`No snapshot URL configured for camera ${cameraId}`);
 
-      const bytes = await fetchSnapshotWithRetries(snapshotUrl, {
-        allowInsecureTLS: this.config.snapshotAllowInsecureTLS,
-        attempts: this.config.snapshotFetchAttempts,
-        retryDelayMs: this.config.snapshotRetryDelayMs,
-      });
+      let bytes;
+      try {
+        bytes = await fetchSnapshotWithRetries(snapshotUrl, {
+          allowInsecureTLS: this.config.snapshotAllowInsecureTLS,
+          attempts: this.config.snapshotFetchAttempts,
+          retryDelayMs: this.config.snapshotRetryDelayMs,
+        });
+      } catch (error) {
+        if (isMissingDetectionSnapshot(error)) {
+          return { skipped: true, reason: 'snapshot_missing', cameraId };
+        }
+        throw error;
+      }
       return await this.classifyImageBuffer(cameraId, bytes, { source: options.source ?? 'snapshot' });
     } finally {
       this.inFlight.delete(cameraId);
