@@ -203,7 +203,12 @@ export class BeakPeekService {
     fs.writeFileSync(tmpPath, bytes);
 
     let result;
+    let processedBytes = bytes;
     try {
+      processedBytes = await this.cropImageBuffer(cameraId, tmpPath, bytes);
+      if (processedBytes !== bytes) {
+        fs.writeFileSync(tmpPath, processedBytes);
+      }
       result = await this.runClassifier(cameraId, tmpPath);
     } finally {
       fs.rmSync(tmpPath, { force: true });
@@ -213,7 +218,7 @@ export class BeakPeekService {
     const commonName = this.lookupCommonName(scientificName) ?? scientificName;
     const id = idFor(now, cameraId, imageHash);
     const imagePath = path.join(this.config.imageDir, `${id}.jpg`);
-    fs.writeFileSync(imagePath, bytes);
+    fs.writeFileSync(imagePath, processedBytes);
 
     this.db
       .prepare(`
@@ -261,6 +266,31 @@ export class BeakPeekService {
       ],
       { cwd: this.config.root },
     );
+  }
+
+  async cropImageBuffer(cameraId, imagePath, fallbackBytes) {
+    if (!this.config.cropImages) return fallbackBytes;
+
+    const croppedPath = path.join(this.config.tmpDir, `${cameraId}-${Date.now()}-crop.jpg`);
+    try {
+      await jsonFromProcess(
+        this.config.python,
+        [
+          this.config.cropScript,
+          imagePath,
+          croppedPath,
+          '--aspect',
+          this.config.cropAspect,
+        ],
+        { cwd: this.config.root },
+      );
+      return fs.readFileSync(croppedPath);
+    } catch (error) {
+      console.warn(`[${cameraId}] smart crop skipped: ${error.message}`);
+      return fallbackBytes;
+    } finally {
+      fs.rmSync(croppedPath, { force: true });
+    }
   }
 
   lookupCommonName(scientificName) {

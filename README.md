@@ -71,6 +71,8 @@ BEAKPEEK_ASSETS_DIR=/path/to/assets
 BEAKPEEK_MODEL=/path/to/model.tflite
 BEAKPEEK_LABELS=/path/to/labels.json
 BEAKPEEK_BIRD_NAMES_DB=/path/to/birdnames.db
+BEAKPEEK_CROP_IMAGES=true
+BEAKPEEK_CROP_ASPECT=1:1
 BEAKPEEK_SNAPSHOT_ALLOW_INSECURE_TLS=true
 BEAKPEEK_SNAPSHOT_FETCH_ATTEMPTS=3
 BEAKPEEK_SNAPSHOT_RETRY_DELAY_MS=1500
@@ -92,6 +94,8 @@ For Scrypted snapshot URLs that only differ by camera ID, use a local `config.js
 The `{cameraId}` token is expanded from the MQTT topic map, and `{IMAGE_NAME}` defaults to `object-detection__animal`. Keep this in `config.json` or `.env`; both are ignored so snapshot secrets do not get committed.
 
 If one camera ever needs a different URL, add a `snapshotUrls` object in local `config.json`; explicit camera URLs override the template for matching IDs.
+
+Event images are smart-cropped by default before classification and storage, so the model and UI both use the same bird-focused frame. Set `"cropImages": false` or `BEAKPEEK_CROP_IMAGES=false` to keep original frames.
 
 To import old observations from another checkout:
 
