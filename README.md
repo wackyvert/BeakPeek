@@ -64,6 +64,8 @@ For Scrypted snapshot URLs that only differ by camera ID, use a local `config.js
 
 The `{cameraId}` token is expanded from the MQTT topic map, and `{IMAGE_NAME}` defaults to `object-detection__animal`. Keep this in `config.json` or `.env`; both are ignored so snapshot secrets do not get committed.
 
+If one camera ever needs a different URL, add a `snapshotUrls` object in local `config.json`; explicit camera URLs override the template for matching IDs.
+
 To import old observations from another checkout:
 
 ```sh
