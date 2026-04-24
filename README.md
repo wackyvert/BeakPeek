@@ -50,6 +50,7 @@ BEAKPEEK_ASSETS_DIR=/path/to/assets
 BEAKPEEK_MODEL=/path/to/model.tflite
 BEAKPEEK_LABELS=/path/to/labels.json
 BEAKPEEK_BIRD_NAMES_DB=/path/to/birdnames.db
+BEAKPEEK_SNAPSHOT_ALLOW_INSECURE_TLS=true
 BEAKPEEK_MQTT_BROKER=mqtt://192.168.68.104:1883
 ```
 
@@ -58,6 +59,7 @@ For Scrypted snapshot URLs that only differ by camera ID, use a local `config.js
 ```json
 {
   "snapshotImageName": "object-detection__animal",
+  "snapshotAllowInsecureTLS": true,
   "snapshotUrlTemplate": "https://your-scrypted-host/endpoint/snapshot/{cameraId}/{IMAGE_NAME}?secret=...&user_token=..."
 }
 ```

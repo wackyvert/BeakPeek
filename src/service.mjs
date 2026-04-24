@@ -1,5 +1,7 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
+import http from 'node:http';
+import https from 'node:https';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { DatabaseSync } from 'node:sqlite';
@@ -19,6 +21,49 @@ function idFor(timestamp, cameraId, hash) {
 
 function hashBuffer(buffer) {
   return crypto.createHash('sha256').update(buffer).digest('hex');
+}
+
+function fetchSnapshot(url, { allowInsecureTLS = false, redirects = 0 } = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const client = parsed.protocol === 'http:' ? http : https;
+    const req = client.get(
+      parsed,
+      {
+        rejectUnauthorized: parsed.protocol === 'https:' ? !allowInsecureTLS : undefined,
+        timeout: 30000,
+        headers: {
+          accept: 'image/jpeg,image/webp,image/*;q=0.9,*/*;q=0.5',
+          'user-agent': 'BeakPeekService/0.1',
+        },
+      },
+      res => {
+        const status = res.statusCode ?? 0;
+        const location = res.headers.location;
+
+        if ([301, 302, 303, 307, 308].includes(status) && location && redirects < 3) {
+          res.resume();
+          resolve(fetchSnapshot(new URL(location, parsed).toString(), { allowInsecureTLS, redirects: redirects + 1 }));
+          return;
+        }
+
+        if (status < 200 || status >= 300) {
+          res.resume();
+          reject(new Error(`Snapshot fetch failed with HTTP ${status}`));
+          return;
+        }
+
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+      },
+    );
+
+    req.on('timeout', () => req.destroy(new Error('Snapshot fetch timed out after 30s')));
+    req.on('error', error => {
+      reject(new Error(`Snapshot fetch failed: ${error.message}`));
+    });
+  });
 }
 
 function jsonFromProcess(command, args, options) {
@@ -73,15 +118,9 @@ export class BeakPeekService {
       const snapshotUrl = this.config.snapshotUrls[cameraId];
       if (!snapshotUrl) throw new Error(`No snapshot URL configured for camera ${cameraId}`);
 
-      const response = await fetch(snapshotUrl, {
-        headers: {
-          accept: 'image/jpeg,image/webp,image/*;q=0.9,*/*;q=0.5',
-          'user-agent': 'BeakPeekService/0.1',
-        },
+      const bytes = await fetchSnapshot(snapshotUrl, {
+        allowInsecureTLS: this.config.snapshotAllowInsecureTLS,
       });
-      if (!response.ok) throw new Error(`Snapshot fetch failed with ${response.status}`);
-
-      const bytes = Buffer.from(await response.arrayBuffer());
       return await this.classifyImageBuffer(cameraId, bytes, { source: options.source ?? 'snapshot' });
     } finally {
       this.inFlight.delete(cameraId);

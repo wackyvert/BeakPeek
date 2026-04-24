@@ -39,6 +39,12 @@ function numberFromEnv(name, fallback) {
   return Number.isFinite(parsed) ? parsed : fallback;
 }
 
+function booleanFromEnv(name, fallback) {
+  const raw = process.env[name];
+  if (raw == null || raw === '') return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(raw.toLowerCase());
+}
+
 function resolveMaybe(value, base = root) {
   if (!value) return value;
   return path.isAbsolute(value) ? value : path.resolve(base, value);
@@ -122,6 +128,10 @@ export const config = {
   birdNamesDb: resolveMaybe(process.env.BEAKPEEK_BIRD_NAMES_DB ?? fileConfig.birdNamesDb ?? path.join(assetsDir, 'birdnames.db'), root),
   detectionDelayMs: numberFromEnv('BEAKPEEK_DETECTION_DELAY_MS', fileConfig.detectionDelayMs ?? 14000),
   dedupeWindowMs: numberFromEnv('BEAKPEEK_DEDUPE_WINDOW_MS', fileConfig.dedupeWindowMs ?? 30000),
+  snapshotAllowInsecureTLS: booleanFromEnv(
+    'BEAKPEEK_SNAPSHOT_ALLOW_INSECURE_TLS',
+    fileConfig.snapshotAllowInsecureTLS ?? true,
+  ),
   snapshotUrls: normalizeSnapshotUrls(
     process.env.BEAKPEEK_SNAPSHOT_URLS ?? fileConfig.snapshotUrls ?? fileConfig.SNAPSHOT_URLS,
     snapshotUrlTemplate,
