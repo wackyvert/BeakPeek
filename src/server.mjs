@@ -17,6 +17,10 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
+function badRequest(message) {
+  return Object.assign(new Error(message), { status: 400 });
+}
+
 function readRequestBuffer(req, { maxBytes = 15_000_000 } = {}) {
   return new Promise((resolve, reject) => {
     const chunks = [];
@@ -60,7 +64,7 @@ function parseDisposition(value = '') {
 function parseMultipartForm(buffer, contentType) {
   const boundary = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/)?.[1]
     ?? contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/)?.[2];
-  if (!boundary) throw new Error('multipart boundary is required');
+  if (!boundary) throw badRequest('multipart boundary is required');
 
   const delimiter = Buffer.from(`--${boundary}`);
   const fields = {};
@@ -112,7 +116,7 @@ async function parseImageUpload(req, url) {
   if (contentType.startsWith('multipart/form-data')) {
     const form = parseMultipartForm(await readRequestBuffer(req), contentType);
     const file = form.files.find(item => item.fieldName === 'image') ?? form.files[0];
-    if (!file) throw new Error('image file is required');
+    if (!file) throw badRequest('image file is required');
     return {
       cameraId: form.fields.cameraId ?? form.fields.camera_id ?? url.searchParams.get('cameraId'),
       cameraName: form.fields.cameraName ?? form.fields.camera_name,
@@ -130,7 +134,25 @@ async function parseImageUpload(req, url) {
     };
   }
 
-  throw new Error('Use multipart/form-data with image=@file, or raw image/* bytes');
+  throw badRequest('Use multipart/form-data with image=@file, or raw image/* bytes');
+}
+
+function looksLikeImage(bytes) {
+  if (bytes.length < 12) return false;
+  const header = bytes.subarray(0, 12);
+  const jpeg = header[0] === 0xff && header[1] === 0xd8 && header[2] === 0xff;
+  const png = header.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
+  const gif = header.subarray(0, 3).toString('ascii') === 'GIF';
+  const webp = header.subarray(0, 4).toString('ascii') === 'RIFF'
+    && header.subarray(8, 12).toString('ascii') === 'WEBP';
+  return jpeg || png || gif || webp;
+}
+
+function validateImageUpload(upload) {
+  if (!upload.bytes?.byteLength) throw badRequest('No image data received');
+  if (!looksLikeImage(upload.bytes)) {
+    throw badRequest('Uploaded file does not look like a JPEG, PNG, GIF, or WebP image');
+  }
 }
 
 function contentTypeFor(file) {
@@ -261,6 +283,7 @@ export function createServer({ config, service, broadcaster }) {
           sendJson(res, 400, { error: 'cameraId is required' });
           return;
         }
+        validateImageUpload(upload);
 
         const result = await service.classifyImageBuffer(upload.cameraId, upload.bytes, {
           cameraName: upload.cameraName,
@@ -314,7 +337,7 @@ export function createServer({ config, service, broadcaster }) {
 
       sendJson(res, 404, { error: 'Not found' });
     } catch (error) {
-      sendJson(res, 500, { error: error.message });
+      sendJson(res, error.status ?? 500, { error: error.message });
     }
   });
 }
