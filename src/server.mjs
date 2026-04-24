@@ -81,6 +81,13 @@ export class EventBroadcaster {
     const message = `event: ${type}\ndata: ${JSON.stringify(payload)}\n\n`;
     for (const client of this.clients) client.write(message);
   }
+
+  close() {
+    for (const client of this.clients) {
+      client.end();
+    }
+    this.clients.clear();
+  }
 }
 
 export function createServer({ service, broadcaster }) {

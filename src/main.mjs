@@ -18,8 +18,29 @@ server.listen(config.port, config.host, () => {
   console.log(`BeakPeek service listening at http://${config.host}:${config.port}`);
 });
 
-for (const signal of ['SIGINT', 'SIGTERM']) {
-  process.on(signal, () => {
-    server.close(() => process.exit(0));
+let shuttingDown = false;
+
+function shutdown(signal) {
+  if (shuttingDown) return;
+  shuttingDown = true;
+  console.log(`Received ${signal}, shutting down...`);
+
+  broadcaster.close();
+  mqtt.client?.end(true);
+
+  const forceExit = setTimeout(() => {
+    server.closeAllConnections?.();
+    process.exit(0);
+  }, 2000);
+  forceExit.unref();
+
+  server.close(() => {
+    clearTimeout(forceExit);
+    process.exit(0);
   });
+  server.closeIdleConnections?.();
+}
+
+for (const signal of ['SIGINT', 'SIGTERM']) {
+  process.on(signal, () => shutdown(signal));
 }
