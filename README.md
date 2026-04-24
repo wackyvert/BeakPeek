@@ -39,6 +39,7 @@ These assets are committed to the repo so a fresh clone can run from its own fol
 - `GET /api/v1/stream` - Server-Sent Events for live updates.
 - `POST /api/v1/cameras/:cameraId/classify` - manually fetch and classify a camera snapshot.
 - `POST /api/v1/test/detection` - simulate the MQTT animal detection payload for a mapped topic.
+- `POST /api/v1/test/classify-image` - upload a local image, classify it, store the event, and log the result.
 
 Test the full MQTT-style route without waiting for a feeder event:
 
@@ -46,6 +47,14 @@ Test the full MQTT-style route without waiting for a feeder event:
 curl -X POST http://localhost:8787/api/v1/test/detection \
   -H 'content-type: application/json' \
   -d '{"topic":"birdfeeder4/ObjectDetector"}'
+```
+
+Classify a local photo upload:
+
+```sh
+curl -X POST http://localhost:8787/api/v1/test/classify-image \
+  -F cameraId=140 \
+  -F image=@/path/to/photo.jpg
 ```
 
 ## Config

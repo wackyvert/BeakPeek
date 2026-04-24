@@ -17,28 +17,120 @@ function sendJson(res, status, body) {
   res.end(payload);
 }
 
-function parseBody(req) {
+function readRequestBuffer(req, { maxBytes = 15_000_000 } = {}) {
   return new Promise((resolve, reject) => {
-    let body = '';
+    const chunks = [];
+    let size = 0;
     req.on('data', chunk => {
-      body += chunk;
-      if (body.length > 1_000_000) {
+      size += chunk.byteLength;
+      if (size > maxBytes) {
         reject(new Error('Request body too large'));
         req.destroy();
-      }
-    });
-    req.on('end', () => {
-      if (!body) {
-        resolve({});
         return;
       }
-      try {
-        resolve(JSON.parse(body));
-      } catch {
-        reject(new Error('Body must be valid JSON'));
-      }
+      chunks.push(chunk);
     });
+    req.on('end', () => resolve(Buffer.concat(chunks)));
+    req.on('error', reject);
   });
+}
+
+async function parseBody(req) {
+  const buffer = await readRequestBuffer(req, { maxBytes: 1_000_000 });
+  const body = buffer.toString('utf8');
+  if (!body) return {};
+  try {
+    return JSON.parse(body);
+  } catch {
+    throw new Error('Body must be valid JSON');
+  }
+}
+
+function parseDisposition(value = '') {
+  const parts = value.split(';').map(part => part.trim());
+  return Object.fromEntries(parts.slice(1).map(part => {
+    const equals = part.indexOf('=');
+    if (equals === -1) return [part, ''];
+    const key = part.slice(0, equals);
+    const raw = part.slice(equals + 1);
+    return [key, raw.replace(/^"|"$/g, '')];
+  }));
+}
+
+function parseMultipartForm(buffer, contentType) {
+  const boundary = contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/)?.[1]
+    ?? contentType.match(/boundary=(?:"([^"]+)"|([^;]+))/)?.[2];
+  if (!boundary) throw new Error('multipart boundary is required');
+
+  const delimiter = Buffer.from(`--${boundary}`);
+  const fields = {};
+  const files = [];
+  let cursor = buffer.indexOf(delimiter);
+  while (cursor !== -1) {
+    cursor += delimiter.length;
+    if (buffer.subarray(cursor, cursor + 2).toString() === '--') break;
+    if (buffer.subarray(cursor, cursor + 2).toString() === '\r\n') cursor += 2;
+
+    const next = buffer.indexOf(delimiter, cursor);
+    if (next === -1) break;
+
+    let part = buffer.subarray(cursor, next);
+    if (part.subarray(part.length - 2).toString() === '\r\n') part = part.subarray(0, part.length - 2);
+
+    const headerEnd = part.indexOf(Buffer.from('\r\n\r\n'));
+    if (headerEnd !== -1) {
+      const headerText = part.subarray(0, headerEnd).toString('latin1');
+      const data = part.subarray(headerEnd + 4);
+      const headers = Object.fromEntries(headerText.split('\r\n').map(line => {
+        const colon = line.indexOf(':');
+        if (colon === -1) return [line.toLowerCase(), ''];
+        return [line.slice(0, colon).trim().toLowerCase(), line.slice(colon + 1).trim()];
+      }));
+      const disposition = parseDisposition(headers['content-disposition']);
+      if (disposition.name) {
+        if (disposition.filename) {
+          files.push({
+            fieldName: disposition.name,
+            filename: disposition.filename,
+            contentType: headers['content-type'] ?? 'application/octet-stream',
+            data,
+          });
+        } else {
+          fields[disposition.name] = data.toString('utf8');
+        }
+      }
+    }
+
+    cursor = next;
+  }
+
+  return { fields, files };
+}
+
+async function parseImageUpload(req, url) {
+  const contentType = req.headers['content-type'] ?? '';
+  if (contentType.startsWith('multipart/form-data')) {
+    const form = parseMultipartForm(await readRequestBuffer(req), contentType);
+    const file = form.files.find(item => item.fieldName === 'image') ?? form.files[0];
+    if (!file) throw new Error('image file is required');
+    return {
+      cameraId: form.fields.cameraId ?? form.fields.camera_id ?? url.searchParams.get('cameraId'),
+      cameraName: form.fields.cameraName ?? form.fields.camera_name,
+      bytes: file.data,
+      filename: file.filename,
+    };
+  }
+
+  if (contentType.startsWith('image/')) {
+    return {
+      cameraId: req.headers['x-camera-id'] ?? url.searchParams.get('cameraId'),
+      cameraName: req.headers['x-camera-name'] ?? undefined,
+      bytes: await readRequestBuffer(req),
+      filename: 'upload',
+    };
+  }
+
+  throw new Error('Use multipart/form-data with image=@file, or raw image/* bytes');
 }
 
 function contentTypeFor(file) {
@@ -159,6 +251,30 @@ export function createServer({ config, service, broadcaster }) {
           source: 'test',
           delay: body.delay ?? false,
         });
+        sendJson(res, result.skipped ? 202 : 201, result);
+        return;
+      }
+
+      if (req.method === 'POST' && pathname === '/api/v1/test/classify-image') {
+        const upload = await parseImageUpload(req, url);
+        if (!upload.cameraId) {
+          sendJson(res, 400, { error: 'cameraId is required' });
+          return;
+        }
+
+        const result = await service.classifyImageBuffer(upload.cameraId, upload.bytes, {
+          cameraName: upload.cameraName,
+          source: 'upload',
+        });
+
+        if (result.skipped) {
+          console.log(`[${upload.cameraId}] upload skipped: ${result.reason} (${upload.filename})`);
+        } else {
+          const event = result.event;
+          const confidence = event.confidence == null ? 'unknown' : `${Math.round(event.confidence * 100)}%`;
+          console.log(`[${upload.cameraId}] upload classified ${upload.filename}: ${event.commonName} (${confidence})`);
+        }
+
         sendJson(res, result.skipped ? 202 : 201, result);
         return;
       }
