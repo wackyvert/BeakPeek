@@ -1,0 +1,26 @@
+{
+  "host": "0.0.0.0",
+  "port": 8787,
+  "legacyRoot": "/Users/jake/Downloads/AuvikDashboard",
+  "dataDir": "./data",
+  "assetsDir": "/Users/jake/Downloads/AuvikDashboard",
+  "python": "python3",
+  "classifierScript": "./scripts/classify.py",
+  "modelPath": "/Users/jake/Downloads/AuvikDashboard/model.tflite",
+  "labelsPath": "/Users/jake/Downloads/AuvikDashboard/labels.json",
+  "birdNamesDb": "/Users/jake/Downloads/AuvikDashboard/birdnames.db",
+  "detectionDelayMs": 14000,
+  "dedupeWindowMs": 30000,
+  "snapshotUrls": {
+    "117": "https://example.invalid/camera-117.jpg"
+  },
+  "mqtt": {
+    "broker": "mqtt://192.168.68.104:1883",
+    "topics": {
+      "birdfeeder/ObjectDetector": "117",
+      "birdfeeder2/ObjectDetector": "133",
+      "birdfeeder3/ObjectDetector": "132",
+      "birdfeeder4/ObjectDetector": "140"
+    }
+  }
+}
