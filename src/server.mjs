@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { handleDetectionMessage } from './mqtt.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.resolve(here, '..', 'public');
@@ -90,7 +91,22 @@ export class EventBroadcaster {
   }
 }
 
-export function createServer({ service, broadcaster }) {
+function testDetectionPayload(className = 'animal') {
+  return JSON.stringify({
+    timestamp: Date.now(),
+    detections: [
+      {
+        className,
+        score: 1,
+        boundingBox: [540, 204, 180, 48],
+        zones: [],
+      },
+    ],
+    inputDimensions: [2560, 1920],
+  });
+}
+
+export function createServer({ config, service, broadcaster }) {
   return http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, `http://${req.headers.host ?? 'localhost'}`);
@@ -121,6 +137,29 @@ export function createServer({ service, broadcaster }) {
 
       if (req.method === 'GET' && pathname === '/api/v1/stream') {
         broadcaster.add(res);
+        return;
+      }
+
+      if (req.method === 'POST' && pathname === '/api/v1/test/detection') {
+        const body = await parseBody(req);
+        const topic = body.topic;
+        if (!topic) {
+          sendJson(res, 400, { error: 'topic is required' });
+          return;
+        }
+
+        const message = body.payload
+          ? JSON.stringify(body.payload)
+          : testDetectionPayload(body.className ?? 'animal');
+        const result = await handleDetectionMessage({
+          config,
+          service,
+          topic,
+          message,
+          source: 'test',
+          delay: body.delay ?? false,
+        });
+        sendJson(res, result.skipped ? 202 : 201, result);
         return;
       }
 

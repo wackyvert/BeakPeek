@@ -1,4 +1,4 @@
-function hasAnimalDetection(message) {
+export function hasAnimalDetection(message) {
   try {
     const payload = JSON.parse(message.toString());
     if (!Array.isArray(payload.detections)) return false;
@@ -6,6 +6,22 @@ function hasAnimalDetection(message) {
   } catch {
     return false;
   }
+}
+
+export function topicCameraMap(config) {
+  return new Map(
+    Object.entries(config.mqtt.topics)
+      .filter(([topic, cameraId]) => topic && topic !== 'undefined' && cameraId),
+  );
+}
+
+export async function handleDetectionMessage({ config, service, topic, message, source = 'mqtt', delay }) {
+  if (!hasAnimalDetection(message)) return { skipped: true, reason: 'not_animal', topic };
+
+  const cameraId = topicCameraMap(config).get(topic);
+  if (!cameraId) return { skipped: true, reason: 'unmapped_topic', topic };
+
+  return await service.classifyCamera(cameraId, { source, delay });
 }
 
 export async function startMqttBridge({ config, service }) {
@@ -20,9 +36,7 @@ export async function startMqttBridge({ config, service }) {
     return { enabled: false, reason: 'Install optional dependency "mqtt" to enable MQTT' };
   }
 
-  const topics = Object.entries(config.mqtt.topics)
-    .filter(([topic, cameraId]) => topic && topic !== 'undefined' && cameraId);
-  const topicCameraIds = new Map(topics);
+  const topics = [...topicCameraMap(config).entries()];
 
   if (topics.length === 0) return { enabled: false, reason: 'No MQTT topics configured' };
 
@@ -33,15 +47,12 @@ export async function startMqttBridge({ config, service }) {
   });
 
   client.on('message', (topic, message) => {
-    if (!hasAnimalDetection(message)) return;
-
-    const cameraId = topicCameraIds.get(topic);
-    if (!cameraId) {
-      console.warn(`[mqtt] ignored detection without camera mapping on ${topic}`);
-      return;
-    }
-
-    service.classifyCamera(cameraId, { source: 'mqtt' }).catch(error => {
+    handleDetectionMessage({ config, service, topic, message }).then(result => {
+      if (result.skipped && result.reason === 'unmapped_topic') {
+        console.warn(`[mqtt] ignored detection without camera mapping on ${topic}`);
+      }
+    }).catch(error => {
+      const cameraId = topicCameraMap(config).get(topic) ?? topic;
       console.error(`[${cameraId}] classification failed:`, error.message);
     });
   });

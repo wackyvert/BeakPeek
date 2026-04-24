@@ -9,7 +9,7 @@ ensureRuntimeDirs();
 const db = openDatabase(config);
 const broadcaster = new EventBroadcaster();
 const service = new BeakPeekService({ config, db, broadcaster });
-const server = createServer({ service, broadcaster });
+const server = createServer({ config, service, broadcaster });
 
 const mqtt = await startMqttBridge({ config, service });
 if (!mqtt.enabled) console.log(`MQTT disabled: ${mqtt.reason}`);
