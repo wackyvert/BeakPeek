@@ -1,4 +1,14 @@
 #!/usr/bin/env python3
+"""Crop a snapshot to a fixed aspect ratio, focused on the subject.
+
+Two modes:
+  * `--box x,y,w,h` — caller supplied a detection box (e.g. from Frigate).
+    Pad it and expand to the target aspect. This is the reliable path.
+  * No `--box` — fall back to a generic saliency map (color distance from
+    border, edges, saturation, weighted toward center).
+
+Coordinates in `--box` may be pixels or normalized [0,1]; we detect which.
+"""
 import argparse
 import json
 from pathlib import Path
@@ -16,36 +26,27 @@ def normalize(values):
 
 
 def expand_to_aspect(box, width, height, aspect):
+    """Grow `box` to match `aspect`, then clamp inside the image."""
     left, top, right, bottom = box
-    center_x = (left + right) / 2
-    center_y = (top + bottom) / 2
-    crop_w = max(1, right - left)
-    crop_h = max(1, bottom - top)
+    cx = (left + right) / 2
+    cy = (top + bottom) / 2
+    crop_w = max(1.0, right - left)
+    crop_h = max(1.0, bottom - top)
 
     if crop_w / crop_h < aspect:
-        target_w = crop_h * aspect
-        target_h = crop_h
+        crop_w = crop_h * aspect
     else:
-        target_w = crop_w
-        target_h = crop_w / aspect
+        crop_h = crop_w / aspect
 
-    if target_w > width:
-        target_w = width
-        target_h = target_w / aspect
-    if target_h > height:
-        target_h = height
-        target_w = target_h * aspect
-
-    crop_w = max(1, min(width, int(round(target_w))))
-    crop_h = max(1, min(height, int(round(crop_w / aspect))))
+    if crop_w > width:
+        crop_w, crop_h = width, width / aspect
     if crop_h > height:
-        crop_h = height
-        crop_w = max(1, min(width, int(round(crop_h * aspect))))
+        crop_w, crop_h = height * aspect, height
 
-    left = int(round(center_x - crop_w / 2))
-    top = int(round(center_y - crop_h / 2))
-    left = min(max(0, left), width - crop_w)
-    top = min(max(0, top), height - crop_h)
+    crop_w = int(round(crop_w))
+    crop_h = int(round(crop_h))
+    left = max(0, min(int(round(cx - crop_w / 2)), width - crop_w))
+    top = max(0, min(int(round(cy - crop_h / 2)), height - crop_h))
     return (left, top, left + crop_w, top + crop_h)
 
 
@@ -61,8 +62,9 @@ def box_from_detection(value, width, height):
         y *= height
         box_h *= height
 
-    pad_x = max(width * 0.025, box_w * 0.45)
-    pad_y = max(height * 0.025, box_h * 0.45)
+    # Pad ~25% on each side so the bird isn't tight against the frame.
+    pad_x = max(width * 0.025, box_w * 0.25)
+    pad_y = max(height * 0.025, box_h * 0.25)
     return (
         max(0, x - pad_x),
         max(0, y - pad_y),
@@ -71,106 +73,13 @@ def box_from_detection(value, width, height):
     )
 
 
-def component_boxes(mask):
-    height, width = mask.shape
-    visited = np.zeros_like(mask, dtype=bool)
-    boxes = []
-
-    for start_y, start_x in zip(*np.where(mask)):
-        if visited[start_y, start_x]:
-            continue
-
-        stack = [(int(start_x), int(start_y))]
-        visited[start_y, start_x] = True
-        min_x = max_x = int(start_x)
-        min_y = max_y = int(start_y)
-        count = 0
-
-        while stack:
-            x, y = stack.pop()
-            count += 1
-            min_x = min(min_x, x)
-            max_x = max(max_x, x)
-            min_y = min(min_y, y)
-            max_y = max(max_y, y)
-
-            for nx, ny in ((x - 1, y), (x + 1, y), (x, y - 1), (x, y + 1)):
-                if 0 <= nx < width and 0 <= ny < height and mask[ny, nx] and not visited[ny, nx]:
-                    visited[ny, nx] = True
-                    stack.append((nx, ny))
-
-        boxes.append((min_x, min_y, max_x + 1, max_y + 1, count))
-
-    return boxes
-
-
-def colored_subject_crop(arr, width, height, aspect):
-    sh, sw = arr.shape[:2]
-    r = arr[:, :, 0]
-    g = arr[:, :, 1]
-    b = arr[:, :, 2]
-    max_rgb = arr.max(axis=2)
-    min_rgb = arr.min(axis=2)
-    saturation = (max_rgb - min_rgb) / np.maximum(max_rgb, 1)
-
-    yellow = (r > 95) & (g > 85) & (r > b * 1.42) & (g > b * 1.25)
-    red = (r > 90) & (r > g * 1.12) & (r > b * 1.16)
-    mask = (saturation > 0.23) & (yellow | red)
-
-    boxes = []
-    for left, top, right, bottom, area in component_boxes(mask):
-        box_w = right - left
-        box_h = bottom - top
-        if area < sw * sh * 0.00035 or area > sw * sh * 0.06:
-            continue
-        if box_w < 5 or box_h < 5:
-            continue
-        fill = area / max(box_w * box_h, 1)
-        if fill < 0.08:
-            continue
-        mean_sat = float(saturation[top:bottom, left:right][mask[top:bottom, left:right]].mean())
-        lower_weight = 1.0 + 0.35 * ((top + bottom) / 2 / sh)
-        score = area * mean_sat * lower_weight
-        boxes.append((score, left, top, right, bottom))
-
-    if not boxes:
-        return None
-
-    _, left, top, right, bottom = max(boxes, key=lambda item: item[0])
-    scale_x = width / sw
-    scale_y = height / sh
-    bird_box = (
-        left * scale_x,
-        top * scale_y,
-        right * scale_x,
-        bottom * scale_y,
-    )
-    bird_w = bird_box[2] - bird_box[0]
-    bird_h = bird_box[3] - bird_box[1]
-    pad_x = max(width * 0.025, bird_w * 0.85)
-    pad_y = max(height * 0.025, bird_h * 0.85)
-    padded = (
-        max(0, bird_box[0] - pad_x),
-        max(0, bird_box[1] - pad_y),
-        min(width, bird_box[2] + pad_x),
-        min(height, bird_box[3] + pad_y),
-    )
-    return expand_to_aspect(padded, width, height, aspect), 0.95
-
-
-def find_crop(image, aspect=16 / 9):
+def saliency_box(image):
+    """Return ((left, top, right, bottom), score) at the original image scale."""
     width, height = image.size
-    if width < 64 or height < 64:
-        return (0, 0, width, height), 0.0
-
     small = image.copy()
     small.thumbnail((420, 420), Image.Resampling.LANCZOS)
     arr = np.asarray(small).astype(np.float32)
     sh, sw = arr.shape[:2]
-
-    colored = colored_subject_crop(arr, width, height, aspect)
-    if colored:
-        return colored
 
     border = max(3, min(sw, sh) // 18)
     border_pixels = np.concatenate([
@@ -201,11 +110,12 @@ def find_crop(image, aspect=16 / 9):
     saliency_image = Image.fromarray(np.uint8(np.clip(saliency * 255, 0, 255)))
     saliency = np.asarray(saliency_image.filter(ImageFilter.GaussianBlur(radius=5))).astype(np.float32) / 255
 
-    threshold = max(float(np.percentile(saliency, 78)), float(saliency.mean() + saliency.std() * 0.35))
+    threshold = max(float(np.percentile(saliency, 78)),
+                    float(saliency.mean() + saliency.std() * 0.35))
     mask = saliency >= threshold
     ys, xs = np.where(mask)
     if xs.size < sw * sh * 0.012:
-        return (0, 0, width, height), 0.0
+        return None
 
     left = xs.min() / sw * width
     right = (xs.max() + 1) / sw * width
@@ -215,7 +125,7 @@ def find_crop(image, aspect=16 / 9):
     box_w = right - left
     box_h = bottom - top
     if box_w * box_h > width * height * 0.92:
-        return (0, 0, width, height), float(saliency[mask].mean())
+        return None
 
     pad_x = max(width * 0.04, box_w * 0.26)
     pad_y = max(height * 0.04, box_h * 0.26)
@@ -225,7 +135,19 @@ def find_crop(image, aspect=16 / 9):
         min(width, right + pad_x),
         min(height, bottom + pad_y),
     )
-    return expand_to_aspect(padded, width, height, aspect), float(saliency[mask].mean())
+    return padded, float(saliency[mask].mean())
+
+
+def find_crop(image, aspect=16 / 9):
+    width, height = image.size
+    if width < 64 or height < 64:
+        return (0, 0, width, height), 0.0
+
+    result = saliency_box(image)
+    if result is None:
+        return (0, 0, width, height), 0.0
+    padded, score = result
+    return expand_to_aspect(padded, width, height, aspect), score
 
 
 def parse_aspect(value):
@@ -246,11 +168,15 @@ def main():
 
     image = ImageOps.exif_transpose(Image.open(args.input)).convert("RGB")
     aspect = parse_aspect(args.aspect)
+    width, height = image.size
+
     if args.box:
-        box = expand_to_aspect(box_from_detection(args.box, image.size[0], image.size[1]), image.size[0], image.size[1], aspect)
+        padded = box_from_detection(args.box, width, height)
+        box = expand_to_aspect(padded, width, height, aspect)
         score = 1.0
     else:
         box, score = find_crop(image, aspect=aspect)
+
     cropped = image.crop(box)
     Path(args.output).parent.mkdir(parents=True, exist_ok=True)
     cropped.save(args.output, "JPEG", quality=args.quality, optimize=True)
@@ -258,7 +184,7 @@ def main():
     print(json.dumps({
         "box": box,
         "score": score,
-        "cropped": box != (0, 0, image.size[0], image.size[1]),
+        "cropped": box != (0, 0, width, height),
         "width": cropped.size[0],
         "height": cropped.size[1],
     }))
