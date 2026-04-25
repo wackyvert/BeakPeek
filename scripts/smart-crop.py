@@ -62,9 +62,14 @@ def box_from_detection(value, width, height):
         y *= height
         box_h *= height
 
-    # Pad ~25% on each side so the bird isn't tight against the frame.
-    pad_x = max(width * 0.025, box_w * 0.25)
-    pad_y = max(height * 0.025, box_h * 0.25)
+    # Pad generously around the detection so the bird has breathing room and
+    # the display panel can scale-to-fit without slicing off head/tail. The
+    # `min(box_w, box_h)` floor stops tiny boxes from getting microscopic
+    # padding, and the `box_*` proportional terms keep big boxes from
+    # over-padding into the rest of the frame.
+    pad_base = min(box_w, box_h) * 0.6
+    pad_x = max(width * 0.05, pad_base, box_w * 0.5)
+    pad_y = max(height * 0.05, pad_base, box_h * 0.5)
     return (
         max(0, x - pad_x),
         max(0, y - pad_y),
