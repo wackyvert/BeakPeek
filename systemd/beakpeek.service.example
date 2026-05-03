@@ -1,0 +1,23 @@
+[Unit]
+Description=BeakPeek feeder intelligence service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=beakpeek
+Group=beakpeek
+WorkingDirectory=/opt/beakpeek/BeakPeekService
+Environment=NODE_ENV=production
+EnvironmentFile=-/opt/beakpeek/BeakPeekService/.env
+ExecStart=/usr/bin/node /opt/beakpeek/BeakPeekService/src/main.mjs
+Restart=on-failure
+RestartSec=5
+KillSignal=SIGTERM
+TimeoutStopSec=10
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,35 @@
+name: BeakPeek
+options:
+  deploymentTarget:
+    iOS: "17.0"
+  createIntermediateGroups: true
+targets:
+  BeakPeek:
+    type: application
+    platform: iOS
+    sources:
+      - path: Sources/BeakPeek
+    info:
+      path: Sources/BeakPeek/Info.plist
+      properties:
+        CFBundleDisplayName: BeakPeek
+        CFBundleShortVersionString: "0.1.0"
+        CFBundleVersion: "1"
+        NSAppTransportSecurity:
+          NSAllowsArbitraryLoads: true
+        UILaunchScreen:
+          UIColorName: ""
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.hadash.beakpeek.ios
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        SWIFT_VERSION: "5.9"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "17.0"
+        SDKROOT: iphoneos
+        SUPPORTED_PLATFORMS: "iphoneos iphonesimulator"
+        GENERATE_INFOPLIST_FILE: NO
+        ENABLE_PREVIEWS: YES
+        SWIFT_STRICT_CONCURRENCY: minimal
+        CODE_SIGN_STYLE: Automatic

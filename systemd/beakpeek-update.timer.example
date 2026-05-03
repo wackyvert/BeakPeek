@@ -1,0 +1,12 @@
+[Unit]
+Description=Periodically update BeakPeek from GitHub
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+RandomizedDelaySec=2min
+Persistent=true
+Unit=beakpeek-update.service
+
+[Install]
+WantedBy=timers.target

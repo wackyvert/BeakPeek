@@ -31,6 +31,20 @@ export function openDatabase(config) {
       image_hash TEXT NOT NULL,
       updated_at INTEGER NOT NULL
     );
+
+    CREATE TABLE IF NOT EXISTS notification_preferences (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS notification_species (
+      species_key TEXT PRIMARY KEY,
+      common_name TEXT,
+      scientific_name TEXT,
+      enabled INTEGER NOT NULL DEFAULT 0,
+      updated_at INTEGER NOT NULL
+    );
   `);
   return db;
 }

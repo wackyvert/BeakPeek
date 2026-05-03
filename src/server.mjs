@@ -192,12 +192,14 @@ export class EventBroadcaster {
 
   add(res) {
     this.clients.add(res);
+    res.socket?.setNoDelay(true);
     res.writeHead(200, {
       'content-type': 'text/event-stream',
       'cache-control': 'no-store',
       connection: 'keep-alive',
       'x-accel-buffering': 'no',
     });
+    res.flushHeaders?.();
     res.write('event: hello\ndata: {"ok":true}\n\n');
     res.on('close', () => this.clients.delete(res));
   }
@@ -261,6 +263,37 @@ export function createServer({ config, service, broadcaster }) {
 
       if (req.method === 'GET' && pathname === '/api/v1/stream') {
         broadcaster.add(res);
+        return;
+      }
+
+      if (req.method === 'GET' && pathname === '/api/v1/notifications') {
+        sendJson(res, 200, service.getNotificationPreferences());
+        return;
+      }
+
+      if (req.method === 'PUT' && pathname === '/api/v1/notifications') {
+        const body = await parseBody(req);
+        sendJson(res, 200, service.setNotificationPreferences(body));
+        return;
+      }
+
+      if (req.method === 'POST' && pathname === '/api/v1/notifications/species/enable-all') {
+        sendJson(res, 200, service.enableAllNotificationSpecies());
+        return;
+      }
+
+      if (req.method === 'DELETE' && pathname === '/api/v1/notifications/species') {
+        sendJson(res, 200, service.clearNotificationSpecies());
+        return;
+      }
+
+      const notificationSpecies = pathname.match(/^\/api\/v1\/notifications\/species\/([^/]+)$/);
+      if (req.method === 'PUT' && notificationSpecies) {
+        const body = await parseBody(req);
+        sendJson(res, 200, service.setNotificationSpecies({
+          ...body,
+          speciesKey: notificationSpecies[1],
+        }));
         return;
       }
 

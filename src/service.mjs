@@ -39,6 +39,60 @@ function sanitizeLogText(text) {
   return text.replace(/([?&](?:secret|user_token|token)=)[^&\s]+/gi, '$1REDACTED');
 }
 
+function speciesKey(commonName, scientificName) {
+  const name = commonName ?? scientificName;
+  const normalized = name?.trim().toLowerCase();
+  return normalized || null;
+}
+
+function booleanPreference(value, fallback = false) {
+  if (value == null) return fallback;
+  return ['1', 'true', 'yes', 'on'].includes(String(value).toLowerCase());
+}
+
+function haServicePath(service) {
+  const normalized = service.replace(/^notify\./, '');
+  return `/api/services/notify/${encodeURIComponent(normalized)}`;
+}
+
+function postJson(url, body, { token, allowInsecureTLS = false } = {}) {
+  return new Promise((resolve, reject) => {
+    const parsed = new URL(url);
+    const client = parsed.protocol === 'http:' ? http : https;
+    const payload = JSON.stringify(body);
+    const req = client.request(
+      parsed,
+      {
+        method: 'POST',
+        rejectUnauthorized: parsed.protocol === 'https:' ? !allowInsecureTLS : undefined,
+        timeout: 15000,
+        headers: {
+          authorization: `Bearer ${token}`,
+          'content-type': 'application/json',
+          'content-length': Buffer.byteLength(payload),
+        },
+      },
+      res => {
+        const chunks = [];
+        res.on('data', chunk => chunks.push(chunk));
+        res.on('end', () => {
+          const status = res.statusCode ?? 0;
+          if (status < 200 || status >= 300) {
+            const detail = Buffer.concat(chunks).toString('utf8').replace(/\s+/g, ' ').trim();
+            reject(new Error(`Home Assistant notify failed with HTTP ${status}${detail ? `: ${detail.slice(0, 240)}` : ''}`));
+            return;
+          }
+          resolve();
+        });
+      },
+    );
+
+    req.on('timeout', () => req.destroy(new Error('Home Assistant notify timed out after 15s')));
+    req.on('error', reject);
+    req.end(payload);
+  });
+}
+
 function isRetryableSnapshotStatus(status) {
   return [400, 404, 408, 425, 429, 500, 502, 503, 504].includes(status);
 }
@@ -251,6 +305,9 @@ export class BeakPeekService {
 
     const event = this.getEvent(id);
     this.broadcaster?.publish('event', event);
+    this.notifyForEvent(event).catch(error => {
+      console.warn(`[notify] ${error.message}`);
+    });
     return { skipped: false, event };
   }
 
@@ -359,6 +416,106 @@ export class BeakPeekService {
         ORDER BY common_name COLLATE NOCASE ASC
       `)
       .all();
+  }
+
+  getNotificationPreferences() {
+    const rows = this.db.prepare('SELECT key, value FROM notification_preferences').all();
+    const prefs = Object.fromEntries(rows.map(row => [row.key, row.value]));
+    const rules = this.db
+      .prepare(`
+        SELECT species_key AS speciesKey, common_name AS commonName, scientific_name AS scientificName, enabled
+        FROM notification_species
+        ORDER BY COALESCE(common_name, scientific_name, species_key) COLLATE NOCASE ASC
+      `)
+      .all()
+      .map(row => ({
+        speciesKey: row.speciesKey,
+        commonName: row.commonName,
+        scientificName: row.scientificName,
+        enabled: Boolean(row.enabled),
+      }));
+
+    const ha = this.config.homeAssistant;
+    return {
+      enabled: booleanPreference(prefs.enabled, false),
+      notifyAllVisitors: booleanPreference(prefs.notifyAllVisitors, false),
+      homeAssistantConfigured: Boolean(ha.baseUrl && ha.token && ha.notifyService),
+      notifyService: ha.notifyService ? `notify.${ha.notifyService}` : '',
+      rules,
+    };
+  }
+
+  setNotificationPreferences({ enabled, notifyAllVisitors } = {}) {
+    const now = Date.now();
+    const statement = this.db.prepare(`
+      INSERT OR REPLACE INTO notification_preferences (key, value, updated_at)
+      VALUES (?, ?, ?)
+    `);
+    if (enabled != null) statement.run('enabled', enabled ? 'true' : 'false', now);
+    if (notifyAllVisitors != null) {
+      statement.run('notifyAllVisitors', notifyAllVisitors ? 'true' : 'false', now);
+    }
+    return this.getNotificationPreferences();
+  }
+
+  setNotificationSpecies({ speciesKey: key, commonName, scientificName, enabled }) {
+    const normalizedKey = key ?? speciesKey(commonName, scientificName);
+    if (!normalizedKey) throw new Error('speciesKey is required');
+    this.db
+      .prepare(`
+        INSERT OR REPLACE INTO notification_species (
+          species_key, common_name, scientific_name, enabled, updated_at
+        ) VALUES (?, ?, ?, ?, ?)
+      `)
+      .run(normalizedKey, commonName ?? null, scientificName ?? null, enabled ? 1 : 0, Date.now());
+    return this.getNotificationPreferences();
+  }
+
+  clearNotificationSpecies() {
+    this.db.prepare('DELETE FROM notification_species').run();
+    return this.getNotificationPreferences();
+  }
+
+  enableAllNotificationSpecies() {
+    const now = Date.now();
+    const statement = this.db.prepare(`
+      INSERT OR REPLACE INTO notification_species (
+        species_key, common_name, scientific_name, enabled, updated_at
+      ) VALUES (?, ?, ?, 1, ?)
+    `);
+    for (const item of this.getSpecies()) {
+      const key = speciesKey(item.commonName, item.scientificName);
+      if (key) statement.run(key, item.commonName ?? null, item.scientificName ?? null, now);
+    }
+    return this.getNotificationPreferences();
+  }
+
+  async notifyForEvent(event) {
+    const preferences = this.getNotificationPreferences();
+    if (!preferences.enabled || !preferences.homeAssistantConfigured) return;
+
+    const key = speciesKey(event.commonName, event.scientificName);
+    const matchedRule = key && preferences.rules.some(rule => rule.enabled && rule.speciesKey === key);
+    if (!preferences.notifyAllVisitors && !matchedRule) return;
+
+    const ha = this.config.homeAssistant;
+    const url = `${ha.baseUrl}${haServicePath(ha.notifyService)}`;
+    const confidence = event.confidence == null ? '' : ` (${Math.round(event.confidence * 100)}%)`;
+    await postJson(
+      url,
+      {
+        title: `BeakPeek: ${event.commonName ?? event.scientificName ?? 'Visitor'}`,
+        message: `${event.cameraName} spotted ${event.commonName ?? event.scientificName ?? 'a visitor'}${confidence}`,
+        data: {
+          tag: `beakpeek-${event.id}`,
+          group: 'beakpeek',
+        },
+      },
+      {
+        token: ha.token,
+        allowInsecureTLS: ha.allowInsecureTLS,
+      },
+    );
   }
 
   getSummary() {

@@ -18,6 +18,12 @@
   "snapshotRetryDelayMs": 1500,
   "snapshotImageName": "object-detection__animal",
   "snapshotUrlTemplate": "https://scrypted.example/endpoint/snapshot/{cameraId}/{IMAGE_NAME}?secret=REDACTED&user_token=REDACTED",
+  "homeAssistant": {
+    "baseUrl": "http://homeassistant.local:8123",
+    "token": "REDACTED_LONG_LIVED_ACCESS_TOKEN",
+    "notifyService": "mobile_app_your_iphone",
+    "allowInsecureTLS": false
+  },
   "mqtt": {
     "broker": "mqtt://192.168.68.104:1883",
     "topics": {

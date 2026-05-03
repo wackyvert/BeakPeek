@@ -1,0 +1,16 @@
+[Unit]
+Description=Fetch GitHub updates for BeakPeek and restart the app
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=oneshot
+Environment=BEAKPEEK_APP_DIR=/opt/beakpeek/BeakPeekService
+Environment=BEAKPEEK_SERVICE_NAME=beakpeek
+Environment=BEAKPEEK_RUN_USER=beakpeek
+Environment=BEAKPEEK_GIT_REMOTE=origin
+Environment=BEAKPEEK_GIT_BRANCH=main
+Environment=BEAKPEEK_NODE=/usr/bin/node
+Environment=BEAKPEEK_NPM=/usr/bin/npm
+Environment=BEAKPEEK_HEALTH_URL=http://localhost:8787/api/v1/summary
+ExecStart=/bin/sh /opt/beakpeek/BeakPeekService/scripts/update-and-restart.sh

@@ -82,6 +82,19 @@ function normalizeMqtt(raw = {}) {
   };
 }
 
+function normalizeHomeAssistant(raw = {}) {
+  const notifyService = process.env.BEAKPEEK_HA_NOTIFY_SERVICE
+    ?? raw.notifyService
+    ?? raw.notify_service
+    ?? '';
+  return {
+    baseUrl: (process.env.BEAKPEEK_HA_URL ?? raw.baseUrl ?? raw.url ?? '').replace(/\/+$/, ''),
+    token: process.env.BEAKPEEK_HA_TOKEN ?? raw.token ?? '',
+    notifyService: notifyService.replace(/^notify\./, ''),
+    allowInsecureTLS: booleanFromEnv('BEAKPEEK_HA_ALLOW_INSECURE_TLS', raw.allowInsecureTLS ?? false),
+  };
+}
+
 loadDotEnv();
 
 const configPath = process.env.BEAKPEEK_CONFIG
@@ -148,6 +161,7 @@ export const config = {
     snapshotImageName,
   ),
   mqtt,
+  homeAssistant: normalizeHomeAssistant(fileConfig.homeAssistant ?? fileConfig.home_assistant ?? {}),
 };
 
 export function ensureRuntimeDirs() {
